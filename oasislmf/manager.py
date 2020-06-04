@@ -462,6 +462,7 @@ class OasisManager(object):
 
         # Prepare the target directory and copy the source files, profiles and
         # model version file into it
+        self.logger.info("Preparing input files directory")
         target_dir = prepare_input_files_directory(
             target_dir,
             exposure_fp,
@@ -479,6 +480,7 @@ class OasisManager(object):
 
         # Get the profiles defining the exposure and accounts files, ID related
         # terms in these files, and FM aggregation hierarchy
+        self.logger.info("Loading OED format definitions")
         exposure_profile = exposure_profile or (get_json(src_fp=exposure_profile_fp) if exposure_profile_fp else self.exposure_profile)
         accounts_profile = accounts_profile or (get_json(src_fp=accounts_profile_fp) if accounts_profile_fp else self.accounts_profile)
         oed_hierarchy = get_oed_hierarchy(exposure_profile, accounts_profile)
@@ -492,8 +494,11 @@ class OasisManager(object):
             self.fm_aggregation_profile
         )
 
-        # The chunksize to use when writing the GUL and IL inputs dataframes
-        # to file
+        # Load Location file at a single point in the Generate files cmd
+        self.logger.info("Loading exposure data from file")
+        exposure_df = get_location_df(exposure_fp, exposure_profile)
+
+        # The chunksize to use when writing the GUL and IL inputs dataframes to file
         write_chunksize = write_chunksize or self.write_chunksize
 
         # Check whether the files generation is for deterministic or model losses
@@ -516,19 +521,15 @@ class OasisManager(object):
             cov_types = supported_oed_coverage_types or self.supported_oed_coverage_types
 
             if deterministic:
-                exposure_df = get_dataframe(
-                    src_fp=exposure_fp,
-                    empty_data_error_msg='No exposure found in the source exposure (loc.) file'
-                )
-                exposure_df['loc_id'] = get_ids(exposure_df, [portfolio_num, acc_num, loc_num])
-
-                loc_ids = (loc_it['loc_id'] for _, loc_it in exposure_df.loc[:, ['loc_id']].iterrows())
+                self.logger.info("Generating deterministic keys data file")
+                loc_ids = (loc_it['loc_id'] for _, loc_it in exposure_df.loc[:, ['loc_id']].sort_values('loc_id').iterrows())
                 keys = [
                     {'loc_id': _loc_id, 'peril_id': 1, 'coverage_type': cov_type, 'area_peril_id': i + 1, 'vulnerability_id': i + 1}
                     for i, (_loc_id, cov_type) in enumerate(product(loc_ids, cov_types))
                 ]
                 _, _ = olf.write_oasis_keys_file(keys, _keys_fp)
             else:
+                self.logger.info("Generating keys data from model lookup")
                 lookup_config = get_json(src_fp=lookup_config_fp) if lookup_config_fp else lookup_config
                 if lookup_config and lookup_config['keys_data_path'] in ['.', './']:
                     lookup_config['keys_data_path'] = os.path.join(os.path.dirname(lookup_config_fp))
@@ -556,6 +557,7 @@ class OasisManager(object):
                     errors_fp=_keys_errors_fp
                 )
         else:
+            self.logger.info("Keys data file provided, skipping lookup")
             _keys_fp = os.path.join(target_dir, os.path.basename(keys_fp))
 
         # Columns from loc file to assign group_id
@@ -569,8 +571,9 @@ class OasisManager(object):
         group_id_cols = list(map(lambda col: col.lower(), group_id_cols))
 
         # Get the GUL input items and exposure dataframes
-        gul_inputs_df, exposure_df = get_gul_input_items(
-            exposure_fp,
+        self.logger.info("Generating gul_inputs_df")
+        gul_inputs_df = get_gul_input_items(
+            exposure_df,
             _keys_fp,
             exposure_profile=exposure_profile,
             group_id_cols=group_id_cols
@@ -711,15 +714,10 @@ class OasisManager(object):
         )
 
         # Load analysis_settings file
-        try:
-            analysis_settings_fn = 'analysis_settings.json'
-            _analysis_settings_fp = os.path.join(model_run_fp, analysis_settings_fn)
-            with io.open(_analysis_settings_fp, 'r', encoding='utf-8') as f:
-                analysis_settings = json.load(f)
-            if analysis_settings.get('analysis_settings'):
-                analysis_settings = analysis_settings['analysis_settings']
-        except (IOError, TypeError, ValueError):
-            raise OasisException('Invalid analysis settings file or file path: {}.'.format(_analysis_settings_fp))
+        analysis_settings = get_analysis_settings(os.path.join(
+            model_run_fp,
+            'analysis_settings.json'
+        ))
 
         generate_summaryxref_files(model_run_fp,
                                    analysis_settings,
@@ -1027,10 +1025,16 @@ class OasisManager(object):
                 cols_to_print = all_loss_cols.copy()
                 if False:
                     cols_to_print.remove('loss_factor_idx')
-                print_dataframe(
-                    all_losses_df[all_losses_df.loss_factor_idx == str(i)],
-                    frame_header=header,
-                    cols=cols_to_print)
+                if include_loss_factor:
+                    print_dataframe(
+                        all_losses_df[all_losses_df.loss_factor_idx == str(i)],
+                        frame_header=header,
+                        cols=cols_to_print)
+                else:
+                    print_dataframe(
+                        all_losses_df,
+                        frame_header=header,
+                        cols=cols_to_print)
 
         if output_file:
             all_losses_df.to_csv(output_file, index=False, encoding='utf-8')
@@ -1101,8 +1105,12 @@ class OasisManager(object):
 
             file_test_result = compare_files(generated, expected)
             if not file_test_result:
-                self.logger.debug(
-                    f'\n FAIL: generated {generated} vs expected {expected}')
+                if update_expected:
+                    shutil.copyfile(generated, expected)
+                else:
+                    raise OasisException(
+                        f'\n FAIL: generated {generated} vs expected {expected}'
+                    )
             test_result = test_result and file_test_result
         return file_test_result
 
