@@ -11,6 +11,7 @@ import re
 import sys
 import warnings
 import csv
+import shutil
 
 from itertools import chain
 from filecmp import cmp as compare_files
@@ -56,9 +57,10 @@ from .model_preparation.oed import load_oed_dfs
 from .model_preparation.utils import prepare_input_files_directory
 from .model_preparation.reinsurance_layer import write_files_for_reinsurance
 from .utils.data import (
+    get_analysis_settings,
     get_model_settings,
     get_dataframe,
-    get_ids,
+    get_location_df,
     get_json,
     get_utctimestamp,
     print_dataframe,
@@ -387,10 +389,7 @@ class OasisManager(object):
             output_directory=lookup_extra_outputs_dir
         )
 
-        location_df = olf.get_exposure(
-            lookup=lookup,
-            source_exposure_fp=exposure_fp,
-        )
+        location_df = get_location_df(exposure_fp)
 
         utcnow = get_utctimestamp(fmt='%Y%m%d%H%M%S')
         default_dir = os.path.join(os.getcwd(), 'runs', 'keys-{}'.format(utcnow))
@@ -484,10 +483,8 @@ class OasisManager(object):
         exposure_profile = exposure_profile or (get_json(src_fp=exposure_profile_fp) if exposure_profile_fp else self.exposure_profile)
         accounts_profile = accounts_profile or (get_json(src_fp=accounts_profile_fp) if accounts_profile_fp else self.accounts_profile)
         oed_hierarchy = get_oed_hierarchy(exposure_profile, accounts_profile)
-        loc_num = oed_hierarchy['locnum']['ProfileElementName'].lower()
         loc_grp = oed_hierarchy['locgrp']['ProfileElementName'].lower()
-        acc_num = oed_hierarchy['accnum']['ProfileElementName'].lower()
-        portfolio_num = oed_hierarchy['portnum']['ProfileElementName'].lower()
+
         fm_aggregation_profile = (
             fm_aggregation_profile or
             ({int(k): v for k, v in get_json(src_fp=fm_aggregation_profile_fp).items()} if fm_aggregation_profile_fp else {}) or
@@ -528,6 +525,7 @@ class OasisManager(object):
                     for i, (_loc_id, cov_type) in enumerate(product(loc_ids, cov_types))
                 ]
                 _, _ = olf.write_oasis_keys_file(keys, _keys_fp)
+
             else:
                 self.logger.info("Generating keys data from model lookup")
                 lookup_config = get_json(src_fp=lookup_config_fp) if lookup_config_fp else lookup_config
@@ -545,14 +543,9 @@ class OasisManager(object):
                     user_data_dir=user_data_dir,
                     output_directory=target_dir
                 )
-                # TODO: exposure_df is loaded twice, Elimilate step in `get_gul_input_items` if done here
-                location_df = olf.get_exposure(
-                    lookup=lookup,
-                    source_exposure_fp=exposure_fp,
-                )
                 f1, _, f2, _ = olf.save_results(
                     lookup,
-                    location_df=location_df,
+                    location_df=exposure_df,
                     successes_fp=_keys_fp,
                     errors_fp=_keys_errors_fp
                 )
@@ -585,7 +578,6 @@ class OasisManager(object):
                 target_dir,
                 gul_inputs_df,
                 exposure_df,
-                exposure_fp,
                 keys_errors_fp=_keys_errors_fp,
                 exposure_profile=exposure_profile,
                 oed_hierarchy=oed_hierarchy
@@ -718,7 +710,11 @@ class OasisManager(object):
             model_run_fp,
             'analysis_settings.json'
         ))
+<<<<<<< HEAD
 
+=======
+
+>>>>>>> develop
         generate_summaryxref_files(model_run_fp,
                                    analysis_settings,
                                    gul_item_stream=gul_item_stream,
@@ -1041,10 +1037,13 @@ class OasisManager(object):
 
         return (il, ril)
 
-    def run_fm_test(self, test_case_dir, run_dir):
+    def run_fm_test(self, test_case_dir, run_dir, update_expected=False):
         """
         Runs an FM test case and validates generated
         losses against expected losses.
+
+        only use 'update_expected' for debugging
+        it replaces the expected file with generated
         """
 
         net_ri = True

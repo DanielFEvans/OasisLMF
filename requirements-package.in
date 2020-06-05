@@ -4,8 +4,10 @@ backports.tempfile
 billiard>=3.6.0.0
 certifi
 chainmap
+chardet
 cookiecutter>=1.6.0
 future
+jsonschema
 msgpack
 pandas>=0.24.0
 pathlib2
