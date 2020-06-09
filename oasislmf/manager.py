@@ -440,7 +440,6 @@ class OasisManager(object):
         oasis_files_prefixes=None,
         group_id_cols=None
     ):
-
         # Convert paths to absolute
         target_dir = as_path(target_dir, 'Oasis files output dir', is_dir=True, preexists=False)
         exposure_fp = as_path(exposure_fp, 'Source exposure file path')
@@ -477,6 +476,9 @@ class OasisManager(object):
             ri_scope_fp=ri_scope_fp
         )
 
+        from guppy import hpy
+        hp = hpy()
+
         # Get the profiles defining the exposure and accounts files, ID related
         # terms in these files, and FM aggregation hierarchy
         self.logger.info("Loading OED format definitions")
@@ -491,9 +493,16 @@ class OasisManager(object):
             self.fm_aggregation_profile
         )
 
+        self.logger.info(hp.heap())
+
         # Load Location file at a single point in the Generate files cmd
         self.logger.info("Loading exposure data from file")
         exposure_df = get_location_df(exposure_fp, exposure_profile)
+
+        self.logger.info(hp.heap())
+        self.logger.info(hp.heap()[0])
+        self.logger.info(exposure_df.memory_usage())
+        self.logger.info(exposure_df.memory_usage().sum())
 
         # The chunksize to use when writing the GUL and IL inputs dataframes to file
         write_chunksize = write_chunksize or self.write_chunksize
@@ -553,6 +562,8 @@ class OasisManager(object):
             self.logger.info("Keys data file provided, skipping lookup")
             _keys_fp = os.path.join(target_dir, os.path.basename(keys_fp))
 
+        self.logger.info(hp.heap())
+
         # Columns from loc file to assign group_id
         if model_settings_fp:
             model_group_fields = get_model_settings(
@@ -565,12 +576,14 @@ class OasisManager(object):
 
         # Get the GUL input items and exposure dataframes
         self.logger.info("Generating gul_inputs_df")
+        self.logger.info(hp.heap())
         gul_inputs_df = get_gul_input_items(
             exposure_df,
             _keys_fp,
             exposure_profile=exposure_profile,
             group_id_cols=group_id_cols
         )
+        self.logger.info(hp.heap())
 
         # If not in det. loss gen. scenario, write exposure summary file
         if summarise_exposure and not deterministic:
@@ -710,11 +723,7 @@ class OasisManager(object):
             model_run_fp,
             'analysis_settings.json'
         ))
-<<<<<<< HEAD
 
-=======
-
->>>>>>> develop
         generate_summaryxref_files(model_run_fp,
                                    analysis_settings,
                                    gul_item_stream=gul_item_stream,

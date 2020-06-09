@@ -160,16 +160,16 @@ def prepare_run_directory(
         except OSError as e:
             if not (e.errno == errno.EEXIST and os.path.islink(destfile) and os.name != 'nt'):
                 raise e
-            else:    
+            else:
                 # If the link already exists, check files are different replace it
                 if os.readlink(destfile) != os.path.abspath(sourcefile):
                     os.symlink(sourcefile, destfile + ".tmp")
                     os.replace(destfile + ".tmp", destfile)
-            
+
         if user_data_dir and os.path.exists(user_data_dir):
             for sourcefile in glob.glob(os.path.join(user_data_dir, '*')):
                 destfile = os.path.join(model_data_dst_fp, os.path.basename(sourcefile))
-                
+
                 try:
                     if os.name == 'nt':
                         shutil.copy(sourcefile, destfile)
@@ -178,7 +178,7 @@ def prepare_run_directory(
                 except OSError as e:
                     if not (e.errno == errno.EEXIST and os.path.islink(destfile) and os.name != 'nt'):
                         raise e
-                    else:    
+                    else:
                         # If the link already exists, check files are different replace it
                         if os.readlink(destfile) != os.path.abspath(sourcefile):
                             os.symlink(sourcefile, destfile + ".tmp")
@@ -360,7 +360,7 @@ def _csv_to_bin(csv_directory, bin_directory, il=False):
             output_file_path = os.path.join(
                 bin_directory, '{}{}.bin'.format(input_file['name'], '_step')
             )
-            
+
             cmd_str = "{} {} < \"{}\" > \"{}\"".format(conversion_tool, step_flag, input_file_path, output_file_path)
         else:
             cmd_str = "{} < \"{}\" > \"{}\"".format(conversion_tool, input_file_path, output_file_path)

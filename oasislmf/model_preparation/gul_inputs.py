@@ -191,6 +191,10 @@ def get_gul_input_items(
     if 'model_data' in keys_df:
         keys_df['areaperil_id'] = keys_df['vulnerability_id'] = -1
 
+    logger.info(exposure_df.memory_usage())
+    logger.info(exposure_df.memory_usage().sum())
+    logger.info(keys_df.memory_usage())
+    logger.info(keys_df.memory_usage().sum())
     try:
         # Create the basic GUL inputs dataframe from merging the exposure and
         # keys dataframes on loc. number/loc. ID; filter out any rows with
@@ -253,6 +257,10 @@ def get_gul_input_items(
         # Group the rows in the GUL inputs table by coverage type, and set the
         # IL terms (and BI coverage boolean) in each group and update the
         # corresponding frame section in the GUL inputs table
+        terms_cols_dtypes = {
+            **{t: 'uint8' for t in term_cols_ints + terms_ints},
+            **{'is_bi_coverage': 'bool'}
+        }
         gul_inputs_reformatted_chunks = []
         for cov_type, cov_type_group in gul_inputs_df.groupby(by=['coverage_type_id'], sort=True):
             logger.info(f"Processing cov type {cov_type}")
@@ -274,10 +282,10 @@ def get_gul_input_items(
                 inplace=True
             )
 
-            logger.info(f"Setting is_bi_coverage")
+            logger.info("Setting is_bi_coverage")
             cov_type_group['is_bi_coverage'] = cov_type == SUPPORTED_COVERAGE_TYPES['bi']['id']
 
-            logger.info(f"Converting null terms/conditions to 0 and moving to generic columns")
+            logger.info("Converting null terms/conditions to 0 and moving to generic columns")
             cov_type_terms = [t for t in terms if fm_terms[cov_level_id][cov_type].get(t)]
             cov_type_term_cols = get_fm_terms_oed_columns(fm_terms, levels=['site coverage'], term_group_ids=[cov_type], terms=cov_type_terms)
             column_mapping_dict = {
@@ -288,19 +296,21 @@ def get_gul_input_items(
             cov_type_group.rename(columns=column_mapping_dict, inplace=True, copy=False)
             cov_type_group.loc[:, ['tiv'] + cov_type_terms].fillna(0.0, inplace=True)
 
+            # Set default values and data types for BI coverage boolean, TIV, deductibles and limit
+            logger.info("Setting dataframe dtypes")
+            gul_inputs_df = set_dataframe_column_dtypes(gul_inputs_df, terms_cols_dtypes)
+
             cov_type_group['coverage_type_id'] = cov_type
             gul_inputs_reformatted_chunks.append(cov_type_group)
+            logger.info(cov_type_group.memory_usage())
+            del cov_type_group
             # logger.info(f"Reinserting values to parent dataframe")
             # gul_inputs_df.loc[cov_type_group.index, ['tiv', 'is_bi_coverage'] + cov_type_terms] = cov_type_group.loc[:, ['tiv', 'is_bi_coverage'] + cov_type_terms].values
 
         gul_inputs_df = pd.concat(gul_inputs_reformatted_chunks).reset_index()
-        # Set default values and data types for BI coverage boolean, TIV, deductibles and limit
-        dtypes = {
-            **{t: 'uint8' for t in term_cols_ints + terms_ints},
-            **{'is_bi_coverage': 'bool'}
-        }
-        logger.info("Setting dataframe dtypes")
-        gul_inputs_df = set_dataframe_column_dtypes(gul_inputs_df, dtypes)
+        del gul_inputs_reformatted_chunks
+        logger.info(gul_inputs_df.memory_usage())
+        logger.info(gul_inputs_df.memory_usage().sum())
 
         if gul_inputs_df.empty:
             raise OasisException(
